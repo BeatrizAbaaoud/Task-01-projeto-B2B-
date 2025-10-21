@@ -1,64 +1,87 @@
-drevend-- Use este script no MySQL para criar as tabelas.
+-- Use este script no MySQL para criar a estrutura do Modelo Dimensional
+-- que é alimentado pelo pipeline Python (etl_b2b_vendas.py.py).
+-- Todas as tabelas estão em minúsculas para garantir a compatibilidade com o MySQL.
 
--- 1. Dimensão de Data (Dim_Data)
-CREATE TABLE Dim_Data (
+-- -----------------------------------------------------------
+-- DIMENSÕES
+-- -----------------------------------------------------------
+
+-- 1. Dimensão de Data (dim_data)
+CREATE TABLE dim_data (
     data_key INT PRIMARY KEY AUTO_INCREMENT,
-    SalesDate DATE NOT NULL,
+    SalesDate DATE NOT NULL UNIQUE,
     Dia INT,
     Mes INT,
     Ano INT,
     Semana_Fiscal VARCHAR(10)
 );
 
--- 2. Dimensão de Tipo de Venda (Dim_Tipo_Venda)
-CREATE TABLE Dim_Tipo_Venda (
+-- 2. Dimensão de Tipo de Venda (dim_tipo_venda)
+CREATE TABLE dim_tipo_venda (
     tipo_venda_key INT PRIMARY KEY AUTO_INCREMENT,
     SalesType VARCHAR(50) NOT NULL UNIQUE,
     Descricao VARCHAR(100)
 );
 
--- 3. Dimensão de Produto (Dim_Produto)
-CREATE TABLE Dim_Produto (
+-- 3. Dimensão de Produto (dim_produto)
+CREATE TABLE dim_produto (
     produto_key INT PRIMARY KEY AUTO_INCREMENT,
     PN VARCHAR(100) NOT NULL UNIQUE,
     Type VARCHAR(50), 
     LFD_Flag VARCHAR(10) 
 );
 
--- 4. Dimensão de Parceiro (Dim_Parceiro)
-CREATE TABLE Dim_Parceiro (
-    parceiro_key INT PRIMARY KEY AUTO_INCREMENT,
-    Distributor_Name VARCHAR(100) NOT NULL,
-    Tier1_PartnerCode VARCHAR(18), -- CNPJ Principal
-    Tier2_PartnerCode VARCHAR(18), -- CNPJ do Parceiro
-    Tier2_PartnerName VARCHAR(100),
-    Estado VARCHAR(5)
-    -- ... mais colunas de localização e contato
+-- 4. Dimensão de Revenda/Parceiro/Cliente Final (drevenda)
+-- Esta dimensão consolida o CNPJ da Revenda (regra de negócio Levy)
+CREATE TABLE drevenda (
+    drevenda_key INT PRIMARY KEY AUTO_INCREMENT,
+    cnpj_revenda VARCHAR(18) NOT NULL UNIQUE, -- Chave de consolidação
+    distributor_name VARCHAR(100),
+    tier1_partner_code VARCHAR(18),
+    tier2_partner_name VARCHAR(100),
+    estado VARCHAR(5),
+    cidade VARCHAR(100),
+    Natureza VARCHAR(50) -- Ex: 'Venda/Revenda Raiz'
 );
 
--- 5. Dimensão de Cliente Final (Dim_Cliente_Final)
-CREATE TABLE Dim_Cliente_Final (
-    cliente_final_key INT PRIMARY KEY AUTO_INCREMENT,
-    EndCustomer_Code VARCHAR(50) NOT NULL UNIQUE, 
-    EndCustomer_Name VARCHAR(255)
-    -- ... mais colunas
+-- 5. Dimensão de Distribuidor (ddistribuidor)
+-- Contém a lista de Distribuidores e seus CNPJs Tier 1
+CREATE TABLE ddistribuidor (
+    ddist_key INT PRIMARY KEY AUTO_INCREMENT,
+    nome_distribuidor VARCHAR(100) NOT NULL UNIQUE,
+    cnpj_distribuidor VARCHAR(18)
 );
 
--- 6. Tabela Fato (Fato_Vendas_Oportunidades)
-CREATE TABLE Fato_Vendas_Oportunidades (
+-- -----------------------------------------------------------
+-- TABELA FATO (fsellout)
+-- -----------------------------------------------------------
+
+CREATE TABLE fsellout (
+    -- Chave Primária Artificial
     fato_id BIGINT PRIMARY KEY AUTO_INCREMENT,
     
-    -- Chaves Estrangeiras (Foreign Keys)
+    -- Chave de Negócio (Usada para o UPSERT no Python)
+    chave_negocio VARCHAR(255) NOT NULL UNIQUE, 
+
+    -- Chaves Estrangeiras do Modelo Estrela
     data_key INT NOT NULL,
     tipo_venda_key INT NOT NULL,
     produto_key INT NOT NULL,
-    parceiro_key INT NOT NULL,
-    cliente_final_key INT,
+
+    -- Chaves Placeholder para o futuro (Enriquecimento/Fase 2)
+    id_revenda INT,
+    id_cf_raiz INT,
+    id_skus INT,
+    id_dist INT,
     
-    -- Métrica
+    -- Métricas e Atributos de Degeneração
     QTY INT NOT NULL,
+    Invoice_Number VARCHAR(50), 
+    Projeto VARCHAR(50),
     
-    -- Relações (Constraints - A ser definido após a criação das Dimensões no BD)
-    FOREIGN KEY (data_key) REFERENCES Dim_Data(data_key)
-    -- ... outras chaves estrangeiras
-);a_raiz
+    -- Relações (Constraints)
+    FOREIGN KEY (data_key) REFERENCES dim_data(data_key),
+    FOREIGN KEY (tipo_venda_key) REFERENCES dim_tipo_venda(tipo_venda_key),
+    FOREIGN KEY (produto_key) REFERENCES dim_produto(produto_key)
+    -- As chaves Placeholder não recebem FOREIGN KEY nesta fase inicial.
+);
